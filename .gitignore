@@ -1,0 +1,17 @@
+# BPF object files
+**/*.bpf.o
+
+# User-space object files
+**/*.o
+
+# BPF skeleton headers
+**/*.skel.h
+
+# 실행 바이너리
+**/execsnoop_user
+**/exitsnoop
+
+# 기타 백업/임시 파일 (선택)
+*~
+*.swp
+
