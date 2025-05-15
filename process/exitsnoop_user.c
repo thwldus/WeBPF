@@ -9,8 +9,13 @@ static volatile bool exiting = false;
 
 static int handle_event(void *ctx, void *data, size_t data_sz) {
     struct event *e = data;
+    if (e->type == EVENT_EXIT) {
     printf("{\"type\": \"exit\", \"pid\": %d, \"ppid\": %d, \"exit_code\": %u, \"duration_ns\": %llu, \"comm\": \"%s\"}\n",
            e->pid, e->ppid, e->exit_code, e->duration_ns, e->comm);
+} else if (e->type == EVENT_FORK) {
+    printf("{\"type\": \"fork\", \"pid\": %d, \"ppid\": %d, \"comm\": \"%s\"}\n",
+           e->pid, e->ppid, e->comm);
+}
     return 0;
 }
 
@@ -27,8 +32,8 @@ static void sig_int(int signo) {
 int main(int argc, char **argv) {
     struct ring_buffer *rb = NULL;
     struct bpf_object *obj;
-    struct bpf_program *prog;
-    struct bpf_link *link;  
+    struct bpf_program *exit_prog, *fork_prog;
+    struct bpf_link *exit_link = NULL, *fork_link = NULL;  
     int map_fd, err;
 
     signal(SIGINT, sig_int);
@@ -45,18 +50,33 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    prog = bpf_object__find_program_by_name(obj, "handle_exit");
-    if (!prog) {
-        fprintf(stderr, "Failed to find program\n");
+    // Attach exit tracepoint
+    exit_prog = bpf_object__find_program_by_name(obj, "handle_exit");
+    if (!exit_prog) {
+        fprintf(stderr, "Failed to find 'handle_exit' program\n");
         return 1;
     }
 
-    link = bpf_program__attach_tracepoint(prog, "sched", "sched_process_exit");
-    if (!link) {
-        fprintf(stderr, "Failed to attach tracepoint\n");
+    exit_link = bpf_program__attach_tracepoint(exit_prog, "sched", "sched_process_exit");
+    if (!exit_link) {
+        fprintf(stderr, "Failed to attach to sched_process_exit\n");
         return 1;
     }
 
+    // Attach fork tracepoint
+    fork_prog = bpf_object__find_program_by_name(obj, "handle_fork");
+    if (!fork_prog) {
+        fprintf(stderr, "Failed to find 'handle_fork' program\n");
+        return 1;
+    }
+
+    fork_link = bpf_program__attach_tracepoint(fork_prog, "sched", "sched_process_fork");
+    if (!fork_link) {
+        fprintf(stderr, "Failed to attach to sched_process_fork\n");
+        return 1;
+    }
+
+    // Setup ring buffer
     map_fd = bpf_object__find_map_fd_by_name(obj, "rb");
     if (map_fd < 0) {
         fprintf(stderr, "Failed to find ringbuf map\n");
@@ -69,7 +89,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    printf("Waiting for process exit events... Press Ctrl+C to stop.\n");
+    printf("Waiting for process fork/exit events... Press Ctrl+C to stop.\n");
     while (!exiting) {
         err = ring_buffer__poll(rb, 100);
         if (err == -EINTR)
@@ -81,7 +101,8 @@ int main(int argc, char **argv) {
     }
 
     ring_buffer__free(rb);
-    bpf_link__destroy(link);  // 리소스 해제
+    bpf_link__destroy(fork_link);
+    bpf_link__destroy(exit_link);
     bpf_object__close(obj);
     return 0;
 }
