@@ -10,6 +10,7 @@
 # 실행 바이너리
 **/execsnoop_user
 **/exitsnoop
+**/opensnoop_user
 
 # 기타 백업/임시 파일 (선택)
 *~
