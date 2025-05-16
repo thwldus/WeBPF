@@ -1,6 +1,6 @@
 # 컴파일러 설정
 BPF_CLANG=clang
-BPF_CFLAGS=-g -O2 -target bpf -D__TARGET_ARCH_x86
+BPF_CFLAGS=-g -O2 -target bpf -D__TARGET_ARCH_x86 -I..
 
 CC=gcc
 USER_CFLAGS=-g -O2 -I. -I../libbpf/include -I/usr/include
@@ -19,7 +19,7 @@ USER_OBJS=$(USER_SRCS:.c=.o)
 all: $(USER_PROG)
 
 # BPF 오브젝트
-$(BPF_PROG): execsnoop.bpf.c execsnoop.h vmlinux.h
+$(BPF_PROG): execsnoop.bpf.c execsnoop.h ../vmlinux.h
 	$(BPF_CLANG) $(BPF_CFLAGS) -c $< -o $@
 
 # skeleton 헤더 자동 생성

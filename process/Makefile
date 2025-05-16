@@ -1,6 +1,6 @@
 # 컴파일러 설정
 BPF_CLANG = clang
-BPF_CFLAGS = -g -O2 -target bpf -D__TARGET_ARCH_x86
+BPF_CFLAGS = -g -O2 -target bpf -D__TARGET_ARCH_x86 -I..
 
 CC = gcc
 USER_CFLAGS = -g -O2 -I. -I../libbpf/include -I../libbpf/src
@@ -16,7 +16,7 @@ USER_OBJS = $(USER_SRCS:.c=.o)
 
 all: $(USER_PROG)
 
-$(BPF_PROG): exitsnoop.bpf.c exitsnoop.h vmlinux.h
+$(BPF_PROG): exitsnoop.bpf.c exitsnoop.h ../vmlinux.h
 	$(BPF_CLANG) $(BPF_CFLAGS) -I. -I../libbpf/include -c $< -o $@
 
 $(USER_OBJS): exitsnoop.h
