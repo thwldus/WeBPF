@@ -10,6 +10,7 @@ struct event {
     int retval;
     bool is_exit;
     char comm[TASK_COMM_LEN];
+    __u64 timestamp_ns;
 };
 
 #endif /* __EXECSNOOP_H */

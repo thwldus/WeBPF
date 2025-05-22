@@ -29,6 +29,7 @@ int trace_exec(struct trace_event_raw_sys_enter *ctx) {
     e->uid = uid;
     e->retval = 0;
     e->is_exit = false;
+    e->timestamp_ns = bpf_ktime_get_ns();
 
     const char *filename = (const char *)BPF_CORE_READ(ctx, args[0]);
     bpf_probe_read_str(e->comm, sizeof(e->comm), filename);
