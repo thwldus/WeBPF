@@ -8,9 +8,11 @@
 **/*.skel.h
 
 # 실행 바이너리
+snoop_user
 **/execsnoop_user
 **/exitsnoop
 **/opensnoop_user
+**/tcpsnoop_user
 
 # 기타 백업/임시 파일 (선택)
 *~
