@@ -1,6 +1,6 @@
 # 컴파일러 설정
 BPF_CLANG = clang
-BPF_CFLAGS = -g -O2 -Wall -target bpf -D__TARGET_ARCH_x86_64 \
+BPF_CFLAGS = -g -O2 -Wall -target bpf -D__TARGET_ARCH_x86 \
              -I. -Isrc -Ilibbpf/include
 
 CC = gcc
@@ -8,20 +8,18 @@ USER_CFLAGS = -g -O2 -Wall -I. -Isrc -Ilibbpf/include
 USER_LDFLAGS = libbpf/src/libbpf.a -lelf -lz
 
 # 파일 경로 설정
-BPF_SRC = src/process.bpf.c src/vile.bpf.c
 USER_SRC = src/snoop_user.c
 BPF_HDR = src/snoop_events.h
 
-BPF_OBJ = process.bpf.o file.bpf.o
+BPF_OBJ = process.bpf.o file.bpf.o tcp.bpf.o
 USER_OBJ = snoop_user
-BPFTOOL ?= bpftool
 
 .PHONY: all clean
 
 all: $(USER_OBJ)
 
 # BPF 오브젝트 빌드
-%.bpf.o: src/%.bpf.c $(BPF_HDR) $(VMLINUX)
+%.bpf.o: src/%.bpf.c $(BPF_HDR) 
 	$(BPF_CLANG) $(BPF_CFLAGS) -c $< -o $@
 
 # 사용자 프로그램 빌드

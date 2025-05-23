@@ -55,6 +55,14 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
             printf("{\"type\": \"fork\", \"timestamp\": \"%s\", \"pid\": %d, \"ppid\": %d, \"comm\": \"%s\"}\n",
                    timebuf, e->common.pid, e->common.ppid, e->common.comm);
             break;
+        case EVENT_TCP:
+    	    printf("{\"type\": \"tcp\", \"timestamp\": \"%s\", \"pid\": %d, \"comm\": \"%s\", \"saddr\": \"%u.%u.%u.%u\", \"sport\": %u, \"daddr\": \"%u.%u.%u.%u\", \"dport\": %u}\n",
+                   timebuf, e->common.pid, e->common.comm,
+                   (e->data.tcp.saddr >> 0) & 0xff, (e->data.tcp.saddr >> 8) & 0xff, (e->data.tcp.saddr >> 16) & 0xff, (e->data.tcp.saddr >> 24) & 0xff, 
+                   e->data.tcp.sport,
+                   (e->data.tcp.daddr >> 0) & 0xff, (e->data.tcp.daddr >> 8) & 0xff, (e->data.tcp.daddr >> 16) & 0xff, (e->data.tcp.daddr >> 24) & 0xff,
+                   e->data.tcp.dport);
+    	    break;
         default:
             printf("{\"type\": \"unknown\", \"timestamp\": \"%s\", \"pid\": %d}\n", timebuf, e->common.pid);
             break;
@@ -69,11 +77,11 @@ static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt) {
 }
 
 int main(int argc, char **argv) {
-    struct ring_buffer *rb1 = NULL, *rb2 = NULL;
-    struct bpf_object *obj = NULL, *file_obj = NULL;
+    struct ring_buffer *rb1 = NULL, *rb2 = NULL, *rb3 = NULL;
+    struct bpf_object *obj = NULL, *file_obj = NULL, *tcp_obj = NULL;
     struct bpf_program *prog;
-    struct bpf_link *link1 = NULL, *link2 = NULL, *link3 = NULL, *file_link = NULL;
-    int map_fd1, map_fd2, err;
+    struct bpf_link *link1 = NULL, *link2 = NULL, *link3 = NULL, *file_link = NULL, *tcp_link = NULL;
+    int map_fd1, map_fd2, map_fd3, err;
     
     signal(SIGINT, sig_handler);
 
@@ -127,6 +135,24 @@ int main(int argc, char **argv) {
         return 1;
     }
     
+    // Load & Attach tcp.bpf.o
+    tcp_obj = bpf_object__open_file("tcp.bpf.o", NULL);
+    if (libbpf_get_error(tcp_obj)) {
+        fprintf(stderr, "Failed to open tcp.bpf.o\n");
+        return 1;
+    }
+    if (bpf_object__load(tcp_obj)) {
+        fprintf(stderr, "Failed to load tcp.bpf.o\n");
+        return 1;
+    }
+    
+    // Attach tcp
+    prog = bpf_object__find_program_by_name(tcp_obj, "trace_tcp_connect");
+    if (!prog || !(tcp_link = bpf_program__attach_kprobe(prog, false, "tcp_connect"))) {
+        fprintf(stderr, "Failed to attach tcp_connect kprobe\n");  
+        return 1;
+    }
+    
     // Create ring buffers for both BPF objects
     map_fd1 = bpf_object__find_map_fd_by_name(obj, "events");
     if (map_fd1 < 0) {
@@ -138,10 +164,16 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Failed to find events map in file.bpf.o\n");
         return 1;
     }
+    map_fd3 = bpf_object__find_map_fd_by_name(tcp_obj, "events");
+    if (map_fd3 < 0) {
+        fprintf(stderr, "Failed to find events map in tcp.bpf.o\n");
+        return 1;
+    }
 
     rb1 = ring_buffer__new(map_fd1, handle_event, NULL, NULL);
     rb2 = ring_buffer__new(map_fd2, handle_event, NULL, NULL);
-    if (!rb1 || !rb2) {
+    rb3 = ring_buffer__new(map_fd3, handle_event, NULL, NULL);
+    if (!rb1 || !rb2 || !rb3) {
         fprintf(stderr, "Failed to create ring buffers\n");
         return 1;
     }
@@ -160,16 +192,25 @@ int main(int argc, char **argv) {
             fprintf(stderr, "Ring buffer 2 polling error: %d\n", err);
             break;
         }
+        
+        err = ring_buffer__poll(rb3, 100);
+    	if (err < 0 && err != -EINTR) {
+            fprintf(stderr, "Ring buffer 3 polling error: %d\n", err);
+            break;
+    	}
     }
 
     ring_buffer__free(rb1);
     ring_buffer__free(rb2);
+    ring_buffer__free(rb3);
     bpf_link__destroy(link1);
     bpf_link__destroy(link2);
     bpf_link__destroy(link3);
     bpf_link__destroy(file_link);
+    bpf_link__destroy(tcp_link);
     bpf_object__close(obj);
     bpf_object__close(file_obj);
+    bpf_object__close(tcp_obj);
 
     return 0;
 }
