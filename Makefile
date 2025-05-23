@@ -8,11 +8,11 @@ USER_CFLAGS = -g -O2 -Wall -I. -Isrc -Ilibbpf/include
 USER_LDFLAGS = libbpf/src/libbpf.a -lelf -lz
 
 # 파일 경로 설정
-BPF_SRC = src/process.bpf.c
+BPF_SRC = src/process.bpf.c src/vile.bpf.c
 USER_SRC = src/snoop_user.c
 BPF_HDR = src/snoop_events.h
 
-BPF_OBJ = process.bpf.o
+BPF_OBJ = process.bpf.o file.bpf.o
 USER_OBJ = snoop_user
 BPFTOOL ?= bpftool
 
@@ -21,7 +21,7 @@ BPFTOOL ?= bpftool
 all: $(USER_OBJ)
 
 # BPF 오브젝트 빌드
-$(BPF_OBJ): $(BPF_SRC) $(BPF_HDR) $(VMLINUX)
+%.bpf.o: src/%.bpf.c $(BPF_HDR) $(VMLINUX)
 	$(BPF_CLANG) $(BPF_CFLAGS) -c $< -o $@
 
 # 사용자 프로그램 빌드

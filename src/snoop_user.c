@@ -43,6 +43,10 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
             printf("{\"type\": \"exec\", \"timestamp\": \"%s\", \"pid\": %d, \"ppid\": %d, \"uid\": %d, \"comm\": \"%s\"}\n",
                    timebuf, e->common.pid, e->common.ppid, e->common.uid, e->common.comm);
             break;
+        case EVENT_OPEN:
+    	    printf("{\"type\": \"open\", \"timestamp\": \"%s\", \"pid\": %d, \"ppid\": %d, \"uid\": %d, \"filename\": \"%s\", \"comm\": \"%s\"}\n",
+           	   timebuf, e->common.pid, e->common.ppid, e->common.uid, e->data.open.filename, e->common.comm);
+    	    break;
         case EVENT_EXIT:
             printf("{\"type\": \"exit\", \"timestamp\": \"%s\", \"pid\": %d, \"ppid\": %d, \"exit_code\": %u, \"duration_ns\": %llu, \"comm\": \"%s\"}\n",
                    timebuf, e->common.pid, e->common.ppid, e->data.bootstrap.exit_code, e->data.bootstrap.duration_ns, e->common.comm);
@@ -65,23 +69,22 @@ static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt) {
 }
 
 int main(int argc, char **argv) {
-    struct ring_buffer *rb = NULL;
-    struct bpf_object *obj;
+    struct ring_buffer *rb1 = NULL, *rb2 = NULL;
+    struct bpf_object *obj = NULL, *file_obj = NULL;
     struct bpf_program *prog;
-    struct bpf_link *link1 = NULL, *link2 = NULL, *link3 = NULL;
-    int map_fd, err;
-
+    struct bpf_link *link1 = NULL, *link2 = NULL, *link3 = NULL, *file_link = NULL;
+    int map_fd1, map_fd2, err;
+    
     signal(SIGINT, sig_handler);
 
+    // Load & Attach process.bpf.o
     obj = bpf_object__open_file("process.bpf.o", NULL);
     if (libbpf_get_error(obj)) {
-        fprintf(stderr, "Failed to open BPF object\n");
+        fprintf(stderr, "Failed to open process.bpf.o\n");
         return 1;
     }
-
-    err = bpf_object__load(obj);
-    if (err) {
-        fprintf(stderr, "Failed to load BPF object\n");
+    if (bpf_object__load(obj)) {
+        fprintf(stderr, "Failed to load process.bpf.o\n");
         return 1;
     }
 
@@ -106,35 +109,67 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    map_fd = bpf_object__find_map_fd_by_name(obj, "events");
-    if (map_fd < 0) {
-        fprintf(stderr, "Failed to find ringbuf map\n");
+    // Load and attach file.bpf.o
+    file_obj = bpf_object__open_file("file.bpf.o", NULL);
+    if (libbpf_get_error(file_obj)) {
+        fprintf(stderr, "Failed to open file.bpf.o\n");
+        return 1;
+    }
+    if (bpf_object__load(file_obj)) {
+        fprintf(stderr, "Failed to load file.bpf.o\n");
+        return 1;
+    }
+    
+    // Attach fileopen
+    prog = bpf_object__find_program_by_name(file_obj, "trace_open");
+    if (!prog || !(file_link = bpf_program__attach_tracepoint(prog, "syscalls", "sys_enter_openat"))) {
+        fprintf(stderr, "Failed to attach openat tracepoint\n");
+        return 1;
+    }
+    
+    // Create ring buffers for both BPF objects
+    map_fd1 = bpf_object__find_map_fd_by_name(obj, "events");
+    if (map_fd1 < 0) {
+        fprintf(stderr, "Failed to find events map in process.bpf.o\n");
+        return 1;
+    }
+    map_fd2 = bpf_object__find_map_fd_by_name(file_obj, "events");
+    if (map_fd2 < 0) {
+        fprintf(stderr, "Failed to find events map in file.bpf.o\n");
         return 1;
     }
 
-    rb = ring_buffer__new(map_fd, handle_event, NULL, NULL);
-    if (!rb) {
-        fprintf(stderr, "Failed to create ring buffer\n");
+    rb1 = ring_buffer__new(map_fd1, handle_event, NULL, NULL);
+    rb2 = ring_buffer__new(map_fd2, handle_event, NULL, NULL);
+    if (!rb1 || !rb2) {
+        fprintf(stderr, "Failed to create ring buffers\n");
         return 1;
     }
 
-    printf("Waiting for process exec/fork/exit events... Press Ctrl+C to exit.\n");
+    printf("Listening for exec, fork, exit, and file open events... Press Ctrl+C to exit.\n");
 
     while (!exiting) {
-        err = ring_buffer__poll(rb, 100);
-        if (err == -EINTR)
+        err = ring_buffer__poll(rb1, 100);
+        if (err < 0 && err != -EINTR) {
+            fprintf(stderr, "Ring buffer 1 polling error: %d\n", err);
             break;
-        if (err < 0) {
-            fprintf(stderr, "Ring buffer polling error: %d\n", err);
+        }
+
+        err = ring_buffer__poll(rb2, 100);
+        if (err < 0 && err != -EINTR) {
+            fprintf(stderr, "Ring buffer 2 polling error: %d\n", err);
             break;
         }
     }
 
-    ring_buffer__free(rb);
+    ring_buffer__free(rb1);
+    ring_buffer__free(rb2);
     bpf_link__destroy(link1);
     bpf_link__destroy(link2);
     bpf_link__destroy(link3);
+    bpf_link__destroy(file_link);
     bpf_object__close(obj);
+    bpf_object__close(file_obj);
 
     return 0;
 }
