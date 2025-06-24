@@ -18,3 +18,7 @@ snoop_user
 *~
 *.swp
 
+# OpenTelemetry Collector binary and archive
+otelcol-contrib
+otelcol-contrib_0.100.0_linux_amd64.tar.gz
+
