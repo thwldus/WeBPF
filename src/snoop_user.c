@@ -56,8 +56,8 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
                    timebuf, e->common.pid, e->common.ppid, e->common.comm);
             break;
         case EVENT_TCP:
-    	    printf("{\"type\": \"tcp\", \"timestamp\": \"%s\", \"pid\": %d, \"comm\": \"%s\", \"saddr\": \"%u.%u.%u.%u\", \"sport\": %u, \"daddr\": \"%u.%u.%u.%u\", \"dport\": %u}\n",
-                   timebuf, e->common.pid, e->common.comm,
+    	    printf("{\"type\": \"tcp\", \"timestamp\": \"%s\", \"pid\": %d, \"ppid\": %d, \"comm\": \"%s\", \"saddr\": \"%u.%u.%u.%u\", \"sport\": %u, \"daddr\": \"%u.%u.%u.%u\", \"dport\": %u}\n",
+                   timebuf, e->common.pid, e->common.ppid, e->common.comm,
                    (e->data.tcp.saddr >> 0) & 0xff, (e->data.tcp.saddr >> 8) & 0xff, (e->data.tcp.saddr >> 16) & 0xff, (e->data.tcp.saddr >> 24) & 0xff, 
                    e->data.tcp.sport,
                    (e->data.tcp.daddr >> 0) & 0xff, (e->data.tcp.daddr >> 8) & 0xff, (e->data.tcp.daddr >> 16) & 0xff, (e->data.tcp.daddr >> 24) & 0xff,

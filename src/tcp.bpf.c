@@ -31,8 +31,10 @@ int trace_tcp_connect(struct pt_regs *ctx) {
     e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
     if (!e) return 0;
 
+    struct task_struct *task = (struct task_struct *)bpf_get_current_task();
+    
     e->common.pid = bpf_get_current_pid_tgid() >> 32;
-    e->common.ppid = 0;  
+    e->common.ppid = BPF_CORE_READ(task, real_parent, tgid);
     e->common.uid = bpf_get_current_uid_gid();
     e->common.timestamp_ns = bpf_ktime_get_ns();
     e->common.type = EVENT_TCP;

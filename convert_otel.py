@@ -32,6 +32,10 @@ def process_event(event):
     pid = event.get("pid")
     ppid = event.get("ppid")
     comm = event.get("comm", "unknown")
+    
+    # 🔍 디버깅: 잘못된 값 출력
+    if ppid is None:
+        print("❌ 잘못된 이벤트 (ppid 없음):", event)
 
     trace_id = pid_to_trace.get(ppid, gen_id(128))
     parent_span_id = pid_to_span.get(ppid)
@@ -79,6 +83,8 @@ def process_event(event):
 # 실행 및 이벤트 수신 ===
 def main():
     proc = subprocess.Popen(["sudo", "./snoop_user"], stdout=subprocess.PIPE, text=True)
+    
+    print("Started snoop_user subprocess. Waiting for events from stdout...")
     
     for line in proc.stdout:
         try:
